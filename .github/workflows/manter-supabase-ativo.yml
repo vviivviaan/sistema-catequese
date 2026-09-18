@@ -1,0 +1,27 @@
+name: Manter Supabase ativo
+
+# O plano gratuito do Supabase pausa projetos após ~7 dias sem nenhuma
+# chamada à API. Este workflow faz uma requisição leve à API a cada poucos
+# dias só para contar como atividade e evitar a pausa automática.
+#
+# A URL e a chave usadas aqui são a mesma NEXT_PUBLIC_SUPABASE_URL e
+# NEXT_PUBLIC_SUPABASE_ANON_KEY já embutidas no site publicado — são
+# públicas por design (o RLS no banco é quem protege os dados), então não
+# há problema em deixá-las visíveis neste arquivo.
+
+on:
+  schedule:
+    - cron: '0 8 * * 1,4' # toda segunda e quinta, 08:00 UTC
+  workflow_dispatch: {} # permite rodar manualmente pela aba Actions
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Chamar a API do Supabase
+        env:
+          SUPABASE_URL: https://hslqhaetgdesppermyfr.supabase.co
+          SUPABASE_ANON_KEY: sb_publishable_xY4P3vxjCWFAxxm0kHMHvw_GF3AcPLv
+        run: |
+          curl -sf -H "apikey: ${SUPABASE_ANON_KEY}" "${SUPABASE_URL}/rest/v1/" > /dev/null
+          echo "Ping enviado com sucesso em $(date -u)"
