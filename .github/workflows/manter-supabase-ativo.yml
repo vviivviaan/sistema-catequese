@@ -22,6 +22,10 @@ jobs:
         env:
           SUPABASE_URL: https://hslqhaetgdesppermyfr.supabase.co
           SUPABASE_ANON_KEY: sb_publishable_xY4P3vxjCWFAxxm0kHMHvw_GF3AcPLv
+        # /rest/v1/ (raiz do PostgREST) exige uma "secret key" com o formato
+        # novo de chaves do Supabase e sempre falharia com a chave pública.
+        # /auth/v1/health é leve, não depende de RLS/grants nas tabelas e
+        # funciona com a chave anon/publishable — testado manualmente (200 OK).
         run: |
-          curl -sf -H "apikey: ${SUPABASE_ANON_KEY}" "${SUPABASE_URL}/rest/v1/" > /dev/null
+          curl -sf -H "apikey: ${SUPABASE_ANON_KEY}" "${SUPABASE_URL}/auth/v1/health" > /dev/null
           echo "Ping enviado com sucesso em $(date -u)"
