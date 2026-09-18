@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
 import QuestionarioForm from '@/components/QuestionarioForm';
+import MensagemErro from '@/components/MensagemErro';
 
 export const dynamic = 'force-dynamic';
 
@@ -12,16 +13,19 @@ export default async function PaginaDetalheQuestionario({
 }) {
   const supabase = createClient();
 
-  const { data: questionario } = await supabase
+  const { data: questionario, error: erroQuestionario } = await supabase
     .from('questionarios')
     .select('*, encontros(titulo)')
     .eq('id', params.id)
     .single();
 
+  if (erroQuestionario && erroQuestionario.code !== 'PGRST116') {
+    return <MensagemErro />;
+  }
   if (!questionario) notFound();
 
   // Não seleciona `resposta_correta`: o gabarito nunca deve chegar ao navegador.
-  const { data: perguntas } = await supabase
+  const { data: perguntas, error: erroPerguntas } = await supabase
     .from('perguntas')
     .select('id, questionario_id, enunciado, ordem, opcoes')
     .eq('questionario_id', params.id)
@@ -61,6 +65,8 @@ export default async function PaginaDetalheQuestionario({
             {jaRespondeu.pontos_ganhos}
           </p>
         </div>
+      ) : erroPerguntas ? (
+        <MensagemErro />
       ) : perguntas && perguntas.length > 0 ? (
         <QuestionarioForm questionarioId={params.id} perguntas={perguntas} />
       ) : (

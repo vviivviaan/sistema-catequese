@@ -13,8 +13,13 @@ create table if not exists perfis (
   nome text not null,
   email text not null,
   pontos integer not null default 0,
+  role text not null default 'catequizando' check (role in ('catequizando', 'administrador')),
   criado_em timestamptz not null default now()
 );
+
+alter table perfis add column if not exists role text not null default 'catequizando';
+alter table perfis drop constraint if exists perfis_role_check;
+alter table perfis add constraint perfis_role_check check (role in ('catequizando', 'administrador'));
 
 create table if not exists temas (
   id uuid primary key default gen_random_uuid(),
@@ -52,8 +57,13 @@ create table if not exists questionarios (
   titulo text not null,
   encontro_id uuid references encontros (id) on delete cascade,
   pontos_totais integer not null default 0,
+  -- quando true, só fica visível para quem estiver em questionario_acesso
+  -- (ou para administradores); quando false, visível a todos os catequizandos.
+  restrito boolean not null default false,
   criado_em timestamptz not null default now()
 );
+
+alter table questionarios add column if not exists restrito boolean not null default false;
 
 create table if not exists perguntas (
   id uuid primary key default gen_random_uuid(),
@@ -76,18 +86,29 @@ create table if not exists respostas_usuario (
   constraint respostas_usuario_unico unique (usuario_id, questionario_id)
 );
 
+-- lista de exceção de acesso: só é consultada quando questionarios.restrito = true.
+create table if not exists questionario_acesso (
+  questionario_id uuid not null references questionarios (id) on delete cascade,
+  usuario_id uuid not null references perfis (id) on delete cascade,
+  criado_em timestamptz not null default now(),
+  primary key (questionario_id, usuario_id)
+);
+
 create index if not exists idx_encontros_data on encontros (data_encontro);
 create index if not exists idx_encontros_tema on encontros (tema_id);
 create index if not exists idx_versiculos_data on versiculos (data_exibicao);
 create index if not exists idx_perguntas_questionario on perguntas (questionario_id, ordem);
 create index if not exists idx_respostas_usuario on respostas_usuario (usuario_id);
 create index if not exists idx_perfis_pontos on perfis (pontos desc);
+create index if not exists idx_questionario_acesso_usuario on questionario_acesso (usuario_id);
 
 -- ----------------------------------------------------------------------------
 -- 2. CRIAÇÃO AUTOMÁTICA DE PERFIL NO CADASTRO
 --    Em vez do app inserir a linha em `perfis` pelo client (o que deixa a
 --    conta "quebrada" se essa chamada falhar), um trigger no banco garante
 --    que todo usuário de auth.users sempre tenha um perfil correspondente.
+--    Todo mundo nasce com role 'catequizando'; promover alguém a
+--    administrador é feito manualmente (ver seção 8).
 -- ----------------------------------------------------------------------------
 
 create or replace function public.handle_new_user()
@@ -117,7 +138,7 @@ create trigger on_auth_user_created
 -- ----------------------------------------------------------------------------
 -- 3. CORREÇÃO DO QUESTIONÁRIO NO SERVIDOR (RPC)
 --    O gabarito (`resposta_correta`) nunca deve ser exposto ao navegador nem
---    a pontuação calculada pelo cliente (ver seção 5 sobre GRANTs). Toda
+--    a pontuação calculada pelo cliente (ver seção 6 sobre GRANTs). Toda
 --    submissão de respostas passa por esta função, que roda com privilégios
 --    de dono da tabela (SECURITY DEFINER) e por isso pode ler o gabarito e
 --    gravar os pontos com segurança.
@@ -185,7 +206,53 @@ $$;
 grant execute on function public.responder_questionario(uuid, jsonb) to authenticated;
 
 -- ----------------------------------------------------------------------------
--- 4. ROW LEVEL SECURITY
+-- 4. PAINEL ADMINISTRATIVO — FUNÇÕES DE APOIO
+-- ----------------------------------------------------------------------------
+
+-- is_admin(): usada dentro das políticas de RLS abaixo para liberar escrita
+-- de conteúdo só para quem tem perfis.role = 'administrador'. Não é
+-- SECURITY DEFINER: roda com o papel de quem chama, e a política de SELECT
+-- de `perfis` (seção 5) já libera leitura de todas as linhas para
+-- autenticados, então a consulta abaixo funciona normalmente.
+create or replace function public.is_admin()
+returns boolean
+language sql
+stable
+set search_path = public
+as $$
+  select exists (
+    select 1 from perfis where id = auth.uid() and role = 'administrador'
+  );
+$$;
+
+grant execute on function public.is_admin() to authenticated;
+
+-- admin_listar_perguntas: única forma de um administrador ler o gabarito
+-- (resposta_correta) das perguntas para poder editá-las — a coluna continua
+-- bloqueada por GRANT para leitura direta via REST (seção 6), então mesmo
+-- um administrador não consegue "select *" na tabela perguntas.
+create or replace function public.admin_listar_perguntas(p_questionario_id uuid)
+returns setof perguntas
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if not is_admin() then
+    raise exception 'Acesso restrito a administradores';
+  end if;
+
+  return query
+    select * from perguntas
+    where questionario_id = p_questionario_id
+    order by ordem;
+end;
+$$;
+
+grant execute on function public.admin_listar_perguntas(uuid) to authenticated;
+
+-- ----------------------------------------------------------------------------
+-- 5. ROW LEVEL SECURITY
 -- ----------------------------------------------------------------------------
 
 alter table perfis enable row level security;
@@ -196,48 +263,103 @@ alter table fotos_galeria enable row level security;
 alter table questionarios enable row level security;
 alter table perguntas enable row level security;
 alter table respostas_usuario enable row level security;
+alter table questionario_acesso enable row level security;
 
--- perfis: qualquer autenticado pode ver todos (necessário para o ranking).
--- Não há política de INSERT/UPDATE/DELETE para `authenticated`: a criação é
--- feita pelo trigger acima e os pontos só mudam via responder_questionario
--- (ambos rodam como dono da tabela e por isso ignoram RLS).
+-- perfis: qualquer autenticado pode ver todos (necessário para o ranking e
+-- para o admin escolher a quem liberar um questionário restrito). Não há
+-- política de INSERT/UPDATE/DELETE para `authenticated`: a criação é feita
+-- pelo trigger acima e os pontos só mudam via responder_questionario (ambos
+-- rodam como dono da tabela e por isso ignoram RLS). Promover alguém a
+-- administrador é feito manualmente por SQL (seção 8), fora do app.
 drop policy if exists "perfis_select" on perfis;
 create policy "perfis_select" on perfis for select to authenticated using (true);
 
--- conteúdo (temas, encontros, versículos, fotos, questionários): leitura
--- liberada para autenticados; cadastro de conteúdo continua sendo feito
--- pelo Table Editor do Supabase (com a service role, que ignora RLS).
+-- conteúdo (temas, encontros, versículos, fotos): leitura liberada para
+-- todos os autenticados; escrita só para administradores.
 drop policy if exists "temas_select" on temas;
 create policy "temas_select" on temas for select to authenticated using (true);
+drop policy if exists "temas_admin_escreve" on temas;
+create policy "temas_admin_escreve" on temas for all to authenticated
+  using (is_admin()) with check (is_admin());
 
 drop policy if exists "encontros_select" on encontros;
 create policy "encontros_select" on encontros for select to authenticated using (true);
+drop policy if exists "encontros_admin_escreve" on encontros;
+create policy "encontros_admin_escreve" on encontros for all to authenticated
+  using (is_admin()) with check (is_admin());
 
 drop policy if exists "versiculos_select" on versiculos;
 create policy "versiculos_select" on versiculos for select to authenticated using (true);
+drop policy if exists "versiculos_admin_escreve" on versiculos;
+create policy "versiculos_admin_escreve" on versiculos for all to authenticated
+  using (is_admin()) with check (is_admin());
 
 drop policy if exists "fotos_galeria_select" on fotos_galeria;
 create policy "fotos_galeria_select" on fotos_galeria for select to authenticated using (true);
+drop policy if exists "fotos_galeria_admin_escreve" on fotos_galeria;
+create policy "fotos_galeria_admin_escreve" on fotos_galeria for all to authenticated
+  using (is_admin()) with check (is_admin());
 
+-- questionarios: visível a todos quando não é restrito; quando restrito, só
+-- para quem está na lista de acesso ou para administradores. Escrita (criar,
+-- editar, marcar como restrito, excluir) só para administradores.
 drop policy if exists "questionarios_select" on questionarios;
-create policy "questionarios_select" on questionarios for select to authenticated using (true);
+create policy "questionarios_select" on questionarios for select to authenticated using (
+  not restrito
+  or is_admin()
+  or exists (
+    select 1 from questionario_acesso qa
+    where qa.questionario_id = questionarios.id and qa.usuario_id = auth.uid()
+  )
+);
+drop policy if exists "questionarios_admin_escreve" on questionarios;
+create policy "questionarios_admin_escreve" on questionarios for all to authenticated
+  using (is_admin()) with check (is_admin());
 
--- perguntas: leitura liberada a nível de linha, mas a coluna `resposta_correta`
--- é bloqueada a nível de coluna logo abaixo (seção 5) para não vazar o gabarito.
+-- perguntas: mesma regra de visibilidade do questionário "pai". A coluna
+-- resposta_correta continua bloqueada por GRANT (seção 6) mesmo para quem
+-- passa nesta política — só sai via admin_listar_perguntas ou
+-- responder_questionario, ambas SECURITY DEFINER.
 drop policy if exists "perguntas_select" on perguntas;
-create policy "perguntas_select" on perguntas for select to authenticated using (true);
+create policy "perguntas_select" on perguntas for select to authenticated using (
+  exists (
+    select 1 from questionarios q
+    where q.id = perguntas.questionario_id
+      and (
+        not q.restrito
+        or is_admin()
+        or exists (
+          select 1 from questionario_acesso qa
+          where qa.questionario_id = q.id and qa.usuario_id = auth.uid()
+        )
+      )
+  )
+);
+drop policy if exists "perguntas_admin_escreve" on perguntas;
+create policy "perguntas_admin_escreve" on perguntas for all to authenticated
+  using (is_admin()) with check (is_admin());
 
--- respostas_usuario: cada usuário só vê o próprio histórico. Não existe
--- política de INSERT/UPDATE para `authenticated` — toda escrita passa pela
--- função responder_questionario.
+-- respostas_usuario: cada usuário só vê o próprio histórico; administradores
+-- veem todos (útil para acompanhar quem já respondeu). Não existe política
+-- de INSERT/UPDATE para `authenticated` — toda escrita passa pela função
+-- responder_questionario.
 drop policy if exists "respostas_usuario_select" on respostas_usuario;
 create policy "respostas_usuario_select" on respostas_usuario
-  for select to authenticated using (usuario_id = auth.uid());
+  for select to authenticated using (usuario_id = auth.uid() or is_admin());
+
+-- questionario_acesso: só administradores conseguem ver e gerenciar a lista
+-- de exceção de acesso.
+drop policy if exists "questionario_acesso_admin" on questionario_acesso;
+create policy "questionario_acesso_admin" on questionario_acesso for all to authenticated
+  using (is_admin()) with check (is_admin());
 
 -- ----------------------------------------------------------------------------
--- 5. GRANTS DE COLUNA
+-- 6. GRANTS DE COLUNA
 --    Reforça em nível de privilégio (não só de política) que o cliente nunca
---    escreve pontos diretamente e nunca lê o gabarito das perguntas.
+--    escreve pontos diretamente e nunca lê o gabarito das perguntas — nem
+--    mesmo um administrador, que só acessa o gabarito pelas funções acima.
+--    As policies "for all" da seção 5 continuam controlando QUEM pode
+--    escrever; estes GRANTs controlam QUAIS COLUNAS podem ser lidas/escritas.
 -- ----------------------------------------------------------------------------
 
 revoke all on perfis from authenticated, anon;
@@ -245,27 +367,68 @@ grant select on perfis to authenticated;
 
 revoke all on perguntas from authenticated, anon;
 grant select (id, questionario_id, enunciado, ordem, opcoes) on perguntas to authenticated;
+grant insert (questionario_id, enunciado, ordem, opcoes, resposta_correta) on perguntas to authenticated;
+grant update (enunciado, ordem, opcoes, resposta_correta) on perguntas to authenticated;
+grant delete on perguntas to authenticated;
 
 revoke all on respostas_usuario from authenticated, anon;
 grant select on respostas_usuario to authenticated;
 
 revoke all on temas from anon;
 grant select on temas to authenticated;
+grant insert, update, delete on temas to authenticated;
 
 revoke all on encontros from anon;
 grant select on encontros to authenticated;
+grant insert, update, delete on encontros to authenticated;
 
 revoke all on versiculos from anon;
 grant select on versiculos to authenticated;
+grant insert, update, delete on versiculos to authenticated;
 
 revoke all on fotos_galeria from anon;
 grant select on fotos_galeria to authenticated;
+grant insert, update, delete on fotos_galeria to authenticated;
 
 revoke all on questionarios from anon;
 grant select on questionarios to authenticated;
+grant insert, update, delete on questionarios to authenticated;
+
+revoke all on questionario_acesso from anon;
+grant select, insert, update, delete on questionario_acesso to authenticated;
 
 -- ----------------------------------------------------------------------------
--- 6. DADOS DE EXEMPLO (opcional — ajuda a ver o app funcionando de imediato)
+-- 7. STORAGE — bucket "galeria"
+--    O bucket em si precisa ser criado manualmente uma vez (Storage → New
+--    bucket → "galeria", marcado como Public), conforme o passo 2.5 do
+--    README. Estas políticas liberam upload/edição/exclusão de arquivos
+--    dentro dele só para administradores; a leitura pública já é permitida
+--    automaticamente por o bucket ser público.
+-- ----------------------------------------------------------------------------
+
+drop policy if exists "galeria_admin_insere" on storage.objects;
+create policy "galeria_admin_insere" on storage.objects for insert to authenticated
+  with check (bucket_id = 'galeria' and is_admin());
+
+drop policy if exists "galeria_admin_atualiza" on storage.objects;
+create policy "galeria_admin_atualiza" on storage.objects for update to authenticated
+  using (bucket_id = 'galeria' and is_admin())
+  with check (bucket_id = 'galeria' and is_admin());
+
+drop policy if exists "galeria_admin_exclui" on storage.objects;
+create policy "galeria_admin_exclui" on storage.objects for delete to authenticated
+  using (bucket_id = 'galeria' and is_admin());
+
+-- ----------------------------------------------------------------------------
+-- 8. COMO PROMOVER O PRIMEIRO ADMINISTRADOR
+--    Depois de criar sua conta normalmente pelo cadastro do site, rode UMA
+--    VEZ no SQL Editor (trocando o e-mail):
+--
+--    update perfis set role = 'administrador' where email = 'seu@email.com';
+-- ----------------------------------------------------------------------------
+
+-- ----------------------------------------------------------------------------
+-- 9. DADOS DE EXEMPLO (opcional — ajuda a ver o app funcionando de imediato)
 -- ----------------------------------------------------------------------------
 
 insert into temas (nome, cor)

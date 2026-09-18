@@ -1,12 +1,13 @@
 import Image from 'next/image';
 import { createClient } from '@/lib/supabase/server';
+import MensagemErro from '@/components/MensagemErro';
 
 export const dynamic = 'force-dynamic';
 
 export default async function PaginaGaleria() {
   const supabase = createClient();
 
-  const { data: fotos } = await supabase
+  const { data: fotos, error: erroFotos } = await supabase
     .from('fotos_galeria')
     .select('*')
     .order('data_evento', { ascending: false });
@@ -20,7 +21,9 @@ export default async function PaginaGaleria() {
         </h1>
       </div>
 
-      {fotos && fotos.length > 0 ? (
+      {erroFotos ? (
+        <MensagemErro />
+      ) : fotos && fotos.length > 0 ? (
         <div className="columns-2 gap-4 sm:columns-3 [&>*]:mb-4">
           {fotos.map((foto) => (
             <figure

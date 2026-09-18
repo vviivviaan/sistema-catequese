@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { createClient } from '@/lib/supabase/server';
 import FiltroEncontros from '@/components/FiltroEncontros';
+import MensagemErro from '@/components/MensagemErro';
 
 export const dynamic = 'force-dynamic';
 
@@ -22,7 +23,7 @@ export default async function PaginaEncontros({
   if (searchParams.inicio) consulta = consulta.gte('data_encontro', searchParams.inicio);
   if (searchParams.fim) consulta = consulta.lte('data_encontro', searchParams.fim);
 
-  const { data: encontros } = await consulta;
+  const { data: encontros, error: erroEncontros } = await consulta;
 
   return (
     <div className="space-y-6">
@@ -33,7 +34,9 @@ export default async function PaginaEncontros({
 
       <FiltroEncontros temas={temas ?? []} />
 
-      {encontros && encontros.length > 0 ? (
+      {erroEncontros ? (
+        <MensagemErro />
+      ) : encontros && encontros.length > 0 ? (
         <ul className="space-y-3">
           {encontros.map((encontro: any) => (
             <li key={encontro.id}>

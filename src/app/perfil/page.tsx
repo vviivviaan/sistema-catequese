@@ -1,6 +1,7 @@
 import { redirect } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
 import TercoProgresso from '@/components/TercoProgresso';
+import MensagemErro from '@/components/MensagemErro';
 import { pontosParaContas } from '@/lib/pontos';
 
 export const dynamic = 'force-dynamic';
@@ -14,9 +15,17 @@ export default async function PaginaPerfil() {
 
   if (!user) redirect('/login');
 
-  const { data: perfil } = await supabase.from('perfis').select('*').eq('id', user.id).single();
+  const { data: perfil, error: erroPerfil } = await supabase
+    .from('perfis')
+    .select('*')
+    .eq('id', user.id)
+    .single();
 
-  const { data: respostas } = await supabase
+  if (erroPerfil) {
+    return <MensagemErro />;
+  }
+
+  const { data: respostas, error: erroRespostas } = await supabase
     .from('respostas_usuario')
     .select('*, questionarios(titulo)')
     .eq('usuario_id', user.id)
@@ -44,7 +53,11 @@ export default async function PaginaPerfil() {
         <h2 className="font-display text-lg font-semibold text-noite">
           Questionários respondidos
         </h2>
-        {respostas && respostas.length > 0 ? (
+        {erroRespostas ? (
+          <div className="mt-3">
+            <MensagemErro />
+          </div>
+        ) : respostas && respostas.length > 0 ? (
           <ul className="mt-3 space-y-2">
             {respostas.map((r: any) => (
               <li

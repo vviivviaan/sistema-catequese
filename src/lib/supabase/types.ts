@@ -7,6 +7,7 @@ export type Database = {
           nome: string;
           email: string;
           pontos: number;
+          role: 'catequizando' | 'administrador';
           criado_em: string;
         };
         Insert: {
@@ -14,12 +15,14 @@ export type Database = {
           nome: string;
           email: string;
           pontos?: number;
+          role?: 'catequizando' | 'administrador';
           criado_em?: string;
         };
         Update: {
           nome?: string;
           pontos?: number;
         };
+        Relationships: [];
       };
       temas: {
         Row: {
@@ -36,6 +39,7 @@ export type Database = {
           nome?: string;
           cor?: string | null;
         };
+        Relationships: [];
       };
       encontros: {
         Row: {
@@ -43,7 +47,7 @@ export type Database = {
           titulo: string;
           resumo: string;
           conteudo: string;
-          tema_id: string;
+          tema_id: string | null;
           data_encontro: string;
           criado_em: string;
         };
@@ -52,11 +56,19 @@ export type Database = {
           titulo: string;
           resumo: string;
           conteudo: string;
-          tema_id: string;
+          tema_id?: string | null;
           data_encontro: string;
           criado_em?: string;
         };
         Update: Partial<Database['public']['Tables']['encontros']['Insert']>;
+        Relationships: [
+          {
+            foreignKeyName: 'encontros_tema_id_fkey';
+            columns: ['tema_id'];
+            referencedRelation: 'temas';
+            referencedColumns: ['id'];
+          },
+        ];
       };
       versiculos: {
         Row: {
@@ -72,6 +84,7 @@ export type Database = {
           data_exibicao: string;
         };
         Update: Partial<Database['public']['Tables']['versiculos']['Insert']>;
+        Relationships: [];
       };
       fotos_galeria: {
         Row: {
@@ -89,6 +102,7 @@ export type Database = {
           criado_em?: string;
         };
         Update: Partial<Database['public']['Tables']['fotos_galeria']['Insert']>;
+        Relationships: [];
       };
       questionarios: {
         Row: {
@@ -96,6 +110,7 @@ export type Database = {
           titulo: string;
           encontro_id: string;
           pontos_totais: number;
+          restrito: boolean;
           criado_em: string;
         };
         Insert: {
@@ -103,9 +118,18 @@ export type Database = {
           titulo: string;
           encontro_id: string;
           pontos_totais?: number;
+          restrito?: boolean;
           criado_em?: string;
         };
         Update: Partial<Database['public']['Tables']['questionarios']['Insert']>;
+        Relationships: [
+          {
+            foreignKeyName: 'questionarios_encontro_id_fkey';
+            columns: ['encontro_id'];
+            referencedRelation: 'encontros';
+            referencedColumns: ['id'];
+          },
+        ];
       };
       perguntas: {
         Row: {
@@ -125,6 +149,14 @@ export type Database = {
           resposta_correta: number;
         };
         Update: Partial<Database['public']['Tables']['perguntas']['Insert']>;
+        Relationships: [
+          {
+            foreignKeyName: 'perguntas_questionario_id_fkey';
+            columns: ['questionario_id'];
+            referencedRelation: 'questionarios';
+            referencedColumns: ['id'];
+          },
+        ];
       };
       respostas_usuario: {
         Row: {
@@ -146,8 +178,44 @@ export type Database = {
           respondido_em?: string;
         };
         Update: Partial<Database['public']['Tables']['respostas_usuario']['Insert']>;
+        Relationships: [
+          {
+            foreignKeyName: 'respostas_usuario_questionario_id_fkey';
+            columns: ['questionario_id'];
+            referencedRelation: 'questionarios';
+            referencedColumns: ['id'];
+          },
+        ];
+      };
+      questionario_acesso: {
+        Row: {
+          questionario_id: string;
+          usuario_id: string;
+          criado_em: string;
+        };
+        Insert: {
+          questionario_id: string;
+          usuario_id: string;
+          criado_em?: string;
+        };
+        Update: Partial<Database['public']['Tables']['questionario_acesso']['Insert']>;
+        Relationships: [
+          {
+            foreignKeyName: 'questionario_acesso_questionario_id_fkey';
+            columns: ['questionario_id'];
+            referencedRelation: 'questionarios';
+            referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'questionario_acesso_usuario_id_fkey';
+            columns: ['usuario_id'];
+            referencedRelation: 'perfis';
+            referencedColumns: ['id'];
+          },
+        ];
       };
     };
+    Views: Record<string, never>;
     Functions: {
       responder_questionario: {
         Args: {
@@ -158,6 +226,21 @@ export type Database = {
           acertos: number;
           total_perguntas: number;
           pontos_ganhos: number;
+        }[];
+      };
+      is_admin: {
+        Args: Record<string, never>;
+        Returns: boolean;
+      };
+      admin_listar_perguntas: {
+        Args: { p_questionario_id: string };
+        Returns: {
+          id: string;
+          questionario_id: string;
+          enunciado: string;
+          ordem: number;
+          opcoes: string[];
+          resposta_correta: number;
         }[];
       };
     };
@@ -172,6 +255,7 @@ export type FotoGaleria = Database['public']['Tables']['fotos_galeria']['Row'];
 export type Questionario = Database['public']['Tables']['questionarios']['Row'];
 export type Pergunta = Database['public']['Tables']['perguntas']['Row'];
 export type RespostaUsuario = Database['public']['Tables']['respostas_usuario']['Row'];
+export type QuestionarioAcesso = Database['public']['Tables']['questionario_acesso']['Row'];
 
 /** Pergunta como o cliente pode vê-la: sem o gabarito (`resposta_correta`),
  * que só existe no banco e é conferido no servidor via RPC. */

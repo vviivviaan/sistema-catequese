@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { createClient } from '@/lib/supabase/server';
 import TercoProgresso from '@/components/TercoProgresso';
+import MensagemErro from '@/components/MensagemErro';
 import { pontosParaContas } from '@/lib/pontos';
 
 export const dynamic = 'force-dynamic';
@@ -14,19 +15,20 @@ export default async function PaginaInicial() {
 
   const hoje = new Date().toISOString().slice(0, 10);
 
-  const [{ data: perfil }, { data: versiculo }, { data: proximoEncontro }] = await Promise.all([
-    user
-      ? supabase.from('perfis').select('*').eq('id', user.id).single()
-      : Promise.resolve({ data: null }),
-    supabase.from('versiculos').select('*').eq('data_exibicao', hoje).maybeSingle(),
-    supabase
-      .from('encontros')
-      .select('*, temas(nome)')
-      .gte('data_encontro', hoje)
-      .order('data_encontro', { ascending: true })
-      .limit(1)
-      .maybeSingle(),
-  ]);
+  const [{ data: perfil }, { data: versiculo, error: erroVersiculo }, { data: proximoEncontro, error: erroEncontro }] =
+    await Promise.all([
+      user
+        ? supabase.from('perfis').select('*').eq('id', user.id).single()
+        : Promise.resolve({ data: null }),
+      supabase.from('versiculos').select('*').eq('data_exibicao', hoje).maybeSingle(),
+      supabase
+        .from('encontros')
+        .select('*, temas(nome)')
+        .gte('data_encontro', hoje)
+        .order('data_encontro', { ascending: true })
+        .limit(1)
+        .maybeSingle(),
+    ]);
 
   const pontos = perfil?.pontos ?? 0;
   const contas = pontosParaContas(pontos);
@@ -46,7 +48,11 @@ export default async function PaginaInicial() {
       {/* Versículo do dia */}
       <section className="rounded-2xl bg-noite p-6 text-cal shadow-elevado sm:p-8">
         <p className="font-mono text-xs uppercase tracking-widest text-vela">Versículo do dia</p>
-        {versiculo ? (
+        {erroVersiculo ? (
+          <div className="mt-3">
+            <MensagemErro />
+          </div>
+        ) : versiculo ? (
           <>
             <p className="mt-3 font-display text-xl leading-relaxed sm:text-2xl">
               &ldquo;{versiculo.texto}&rdquo;
@@ -86,7 +92,11 @@ export default async function PaginaInicial() {
           <p className="font-mono text-xs uppercase tracking-widest text-noite-suave">
             Próximo encontro
           </p>
-          {proximoEncontro ? (
+          {erroEncontro ? (
+            <div className="mt-2">
+              <MensagemErro />
+            </div>
+          ) : proximoEncontro ? (
             <>
               <h2 className="mt-2 font-display text-xl font-semibold text-noite">
                 {proximoEncontro.titulo}

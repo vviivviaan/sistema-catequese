@@ -1,4 +1,5 @@
 import { createClient } from '@/lib/supabase/server';
+import MensagemErro from '@/components/MensagemErro';
 
 export const dynamic = 'force-dynamic';
 
@@ -11,7 +12,7 @@ export default async function PaginaRanking() {
     data: { user },
   } = await supabase.auth.getUser();
 
-  const { data: perfis } = await supabase
+  const { data: perfis, error: erroPerfis } = await supabase
     .from('perfis')
     .select('id, nome, pontos')
     .order('pontos', { ascending: false })
@@ -28,6 +29,8 @@ export default async function PaginaRanking() {
           Pontos acumulados respondendo aos questionários dos encontros.
         </p>
       </div>
+
+      {erroPerfis && <MensagemErro />}
 
       <ol className="space-y-2">
         {(perfis ?? []).map((perfil, indice) => {
@@ -55,7 +58,7 @@ export default async function PaginaRanking() {
         })}
       </ol>
 
-      {(!perfis || perfis.length === 0) && (
+      {!erroPerfis && (!perfis || perfis.length === 0) && (
         <p className="rounded-xl bg-cartao p-6 text-center text-sm text-noite-suave shadow-suave">
           Ninguém pontuou ainda. Seja o primeiro a responder um questionário!
         </p>

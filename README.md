@@ -53,18 +53,28 @@ Acesse `http://localhost:3000`, clique em **Cadastre-se**, crie uma conta e expl
 
 ---
 
-## 4. Cadastrando conteúdo (encontros, versículos, fotos, questionários)
+## 4. Painel administrativo e cadastro de conteúdo
 
-Nesta primeira versão, o cadastro de conteúdo é feito diretamente pelo **Table Editor** do Supabase (painel visual, sem precisar escrever SQL):
+O cadastro de conteúdo (temas, encontros, versículos, fotos e questionários) é feito **dentro do próprio site**, em `/admin`, por quem tiver `perfis.role = 'administrador'`. Catequizandos comuns nunca veem esse link nem conseguem acessar `/admin` (bloqueado tanto no middleware quanto nas políticas de RLS do banco).
 
-- **`temas`**: nome do tema (ex: "Sacramentos") e uma cor opcional.
-- **`encontros`**: título, resumo, conteúdo (texto completo do encontro), `tema_id` (escolha um tema já criado) e `data_encontro`.
-- **`versiculos`**: referência (ex: "João 3:16"), texto e `data_exibicao` (a data em que ele aparecerá na tela inicial).
-- **`fotos_galeria`**: título, `data_evento` e `url_imagem` (suba a foto no bucket `galeria` do Storage e cole aqui a URL pública gerada).
-- **`questionarios`**: título e `encontro_id` (a qual encontro ele pertence).
-- **`perguntas`**: `questionario_id`, enunciado, `ordem`, `opcoes` (lista de alternativas) e `resposta_correta` (índice da alternativa certa, começando em 0).
+**Promovendo o primeiro administrador:**
 
-> Se no futuro vocês quiserem uma tela de administração dentro do próprio site (em vez do painel do Supabase), é só pedir — dá para construir como uma segunda etapa, com um perfil de "catequista/administrador".
+1. Crie sua conta normalmente pelo cadastro do site.
+2. No SQL Editor do Supabase, rode uma vez (trocando o e-mail):
+   ```sql
+   update perfis set role = 'administrador' where email = 'seu@email.com';
+   ```
+3. Atualize a página — o link **"Painel Admin"** aparece no menu.
+
+**O que dá para gerenciar pelo painel:**
+
+- **Temas**: nome e cor.
+- **Encontros**: título, resumo, conteúdo completo, tema e data — com edição.
+- **Versículos**: referência, texto e data de exibição.
+- **Galeria**: upload direto de fotos (vai para o bucket `galeria` do Storage automaticamente) e exclusão.
+- **Questionários**: título, encontro relacionado, perguntas com gabarito (múltiplas alternativas, edição e exclusão) e controle de acesso — por padrão todo questionário fica visível a todos os catequizandos, mas pode ser marcado como **"Restrito"** para liberar apenas a uma lista específica de pessoas (ex: recuperação de quem faltou).
+
+A correção do gabarito continua acontecendo inteiramente no banco (seção 6) — mesmo um administrador não consegue ler `resposta_correta` por uma consulta comum; a edição de perguntas passa por uma função (`admin_listar_perguntas`) que só funciona para quem tem `role = 'administrador'`.
 
 ---
 
@@ -105,7 +115,9 @@ src/
     questionarios/            → Listagem + responder
     ranking/                  → Ranking de pontos da comunidade
     perfil/                   → Perfil e histórico do catequizando
+    admin/                    → Painel administrativo (temas, encontros, versículos, galeria, questionários e acesso)
   components/                 → Componentes reutilizáveis (Header, filtros, formulário de quiz, terço de progresso)
+    admin/                    → Formulários e listas usados só no painel administrativo
   lib/
     supabase/                 → Clientes Supabase (browser, server, middleware) e tipos
     pontos.ts                 → Regras de pontuação
@@ -117,6 +129,5 @@ supabase/
 
 ## Próximos passos sugeridos
 
-- Painel de administração no próprio site para o catequista cadastrar encontros, fotos e questionários sem usar o Supabase diretamente.
 - Notificações por e-mail lembrando do encontro da semana.
 - Exportar certificado de participação ao final do ano de catequese.

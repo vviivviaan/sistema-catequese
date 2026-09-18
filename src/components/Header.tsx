@@ -18,11 +18,22 @@ export default function Header() {
   const router = useRouter();
   const supabase = createClient();
   const [logado, setLogado] = useState(false);
+  const [ehAdmin, setEhAdmin] = useState(false);
 
   useEffect(() => {
-    supabase.auth.getUser().then(({ data }) => setLogado(!!data.user));
+    async function carregarSessao(userId: string | undefined) {
+      setLogado(!!userId);
+      if (!userId) {
+        setEhAdmin(false);
+        return;
+      }
+      const { data: perfil } = await supabase.from('perfis').select('*').eq('id', userId).single();
+      setEhAdmin(perfil?.role === 'administrador');
+    }
+
+    supabase.auth.getUser().then(({ data }) => carregarSessao(data.user?.id));
     const { data: listener } = supabase.auth.onAuthStateChange((_evento, sessao) => {
-      setLogado(!!sessao?.user);
+      carregarSessao(sessao?.user?.id);
     });
     return () => listener.subscription.unsubscribe();
   }, [supabase]);
@@ -60,6 +71,17 @@ export default function Header() {
               </Link>
             );
           })}
+          {ehAdmin && (
+            <Link
+              href="/admin"
+              className={`rounded-full px-3 py-1.5 font-medium transition-colors ${pathname.startsWith('/admin')
+                  ? 'bg-noite text-cal'
+                  : 'text-rocha hover:bg-rocha/10'
+                }`}
+            >
+              Painel Admin
+            </Link>
+          )}
           {logado && (
             <button
               onClick={sair}

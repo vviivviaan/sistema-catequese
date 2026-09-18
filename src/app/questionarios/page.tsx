@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import { createClient } from '@/lib/supabase/server';
+import MensagemErro from '@/components/MensagemErro';
 
 export const dynamic = 'force-dynamic';
 
@@ -10,7 +11,7 @@ export default async function PaginaQuestionarios() {
     data: { user },
   } = await supabase.auth.getUser();
 
-  const { data: questionarios } = await supabase
+  const { data: questionarios, error: erroQuestionarios } = await supabase
     .from('questionarios')
     .select('*, encontros(titulo)')
     .order('criado_em', { ascending: false });
@@ -35,7 +36,9 @@ export default async function PaginaQuestionarios() {
         </p>
       </div>
 
-      {questionarios && questionarios.length > 0 ? (
+      {erroQuestionarios ? (
+        <MensagemErro />
+      ) : questionarios && questionarios.length > 0 ? (
         <ul className="space-y-3">
           {questionarios.map((q: any) => {
             const resultado = mapaRespondidos.get(q.id);

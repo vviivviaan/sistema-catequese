@@ -1,18 +1,24 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
+import MensagemErro from '@/components/MensagemErro';
 
 export const dynamic = 'force-dynamic';
 
 export default async function PaginaDetalheEncontro({ params }: { params: { id: string } }) {
   const supabase = createClient();
 
-  const { data: encontro } = await supabase
+  const { data: encontro, error: erroEncontro } = await supabase
     .from('encontros')
     .select('*, temas(nome)')
     .eq('id', params.id)
     .single();
 
+  // PGRST116 = nenhuma linha encontrada (id não existe de fato) → 404.
+  // Qualquer outro erro é uma falha real de conexão/permissão.
+  if (erroEncontro && erroEncontro.code !== 'PGRST116') {
+    return <MensagemErro />;
+  }
   if (!encontro) notFound();
 
   const { data: questionario } = await supabase
