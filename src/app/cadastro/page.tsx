@@ -20,20 +20,19 @@ export default function PaginaCadastro() {
     setErro(null);
     setCarregando(true);
 
-    const { data, error } = await supabase.auth.signUp({
+    const { error } = await supabase.auth.signUp({
       email,
       password: senha,
       options: { data: { nome } },
     });
 
+    // O perfil em `perfis` é criado automaticamente por um trigger no banco
+    // (on_auth_user_created), então não precisa ser inserido pelo cliente aqui.
+
     if (error) {
       setCarregando(false);
       setErro('Não foi possível concluir o cadastro. Verifique os dados e tente novamente.');
       return;
-    }
-
-    if (data.user) {
-      await supabase.from('perfis').insert({ id: data.user.id, nome, email });
     }
 
     setCarregando(false);

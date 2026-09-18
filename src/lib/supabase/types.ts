@@ -148,6 +148,19 @@ export type Database = {
         Update: Partial<Database['public']['Tables']['respostas_usuario']['Insert']>;
       };
     };
+    Functions: {
+      responder_questionario: {
+        Args: {
+          p_questionario_id: string;
+          p_respostas: { pergunta_id: string; resposta: number }[];
+        };
+        Returns: {
+          acertos: number;
+          total_perguntas: number;
+          pontos_ganhos: number;
+        }[];
+      };
+    };
   };
 };
 
@@ -159,3 +172,7 @@ export type FotoGaleria = Database['public']['Tables']['fotos_galeria']['Row'];
 export type Questionario = Database['public']['Tables']['questionarios']['Row'];
 export type Pergunta = Database['public']['Tables']['perguntas']['Row'];
 export type RespostaUsuario = Database['public']['Tables']['respostas_usuario']['Row'];
+
+/** Pergunta como o cliente pode vê-la: sem o gabarito (`resposta_correta`),
+ * que só existe no banco e é conferido no servidor via RPC. */
+export type PerguntaSemGabarito = Omit<Pergunta, 'resposta_correta'>;

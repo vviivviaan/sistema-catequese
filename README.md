@@ -77,18 +77,19 @@ Nesta primeira versão, o cadastro de conteúdo é feito diretamente pelo **Tabl
    - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
 4. Clique em **Deploy**. Em cerca de 1 minuto o site estará no ar em um endereço `.vercel.app`.
 5. Opcional: em **Project Settings → Domains**, adicione um domínio próprio (ex: `catequeseadultos.org.br`, se a paróquia adquirir um).
+6. **Antes de divulgar o site**: volte em **Authentication → Settings** no Supabase e reative a confirmação por e-mail obrigatória, caso tenha desabilitado durante os testes (passo 2.4) — sem isso, qualquer pessoa pode se cadastrar com o e-mail de outra pessoa.
 
 ---
 
 ## 6. Sistema de pontos
 
-As regras ficam centralizadas em [`src/lib/pontos.ts`](./src/lib/pontos.ts):
+A correção do questionário e o cálculo de pontos acontecem **no banco**, na função `responder_questionario` (definida em [`supabase/schema.sql`](./supabase/schema.sql)) — não no navegador. Isso é proposital: o gabarito (`resposta_correta`) nunca é enviado ao cliente, e a pontuação nunca é um valor que o navegador possa forjar.
 
 - **10 pontos** por pergunta correta no questionário.
 - **+20 pontos de bônus** ao acertar 100% de um questionário.
-- Os pontos acumulados também "acendem" contas no terço de progresso exibido no perfil e na tela inicial (a cada 30 pontos, uma conta se acende) — o elemento visual de identidade do sistema.
+- Os pontos acumulados também "acendem" contas no terço de progresso exibido no perfil e na tela inicial (a cada 30 pontos, uma conta se acende) — o elemento visual de identidade do sistema. Essa conversão (só visual, sem impacto na pontuação) está em [`src/lib/pontos.ts`](./src/lib/pontos.ts).
 
-Esses números são só um ponto de partida; é fácil ajustá-los depois.
+Esses números são só um ponto de partida; para ajustá-los depois, é preciso mudar a função `responder_questionario` no banco (rode a alteração pelo SQL Editor do Supabase).
 
 ---
 

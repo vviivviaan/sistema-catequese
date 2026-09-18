@@ -20,9 +20,10 @@ export default async function PaginaDetalheQuestionario({
 
   if (!questionario) notFound();
 
+  // Não seleciona `resposta_correta`: o gabarito nunca deve chegar ao navegador.
   const { data: perguntas } = await supabase
     .from('perguntas')
-    .select('*')
+    .select('id, questionario_id, enunciado, ordem, opcoes')
     .eq('questionario_id', params.id)
     .order('ordem', { ascending: true });
 

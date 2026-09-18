@@ -3,12 +3,11 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
-import { calcularPontos } from '@/lib/pontos';
-import type { Pergunta } from '@/lib/supabase/types';
+import type { PerguntaSemGabarito } from '@/lib/supabase/types';
 
 type Props = {
   questionarioId: string;
-  perguntas: Pergunta[];
+  perguntas: PerguntaSemGabarito[];
 };
 
 type Resultado = {
@@ -32,47 +31,34 @@ export default function QuestionarioForm({ questionarioId, perguntas }: Props) {
     setErro(null);
     setEnviando(true);
 
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
+    // A correção e a pontuação são calculadas no banco (função
+    // responder_questionario), que é a única que tem acesso ao gabarito
+    // e a única autorizada a gravar pontos — o cliente nunca envia o
+    // resultado, só as respostas escolhidas.
+    const respostasEnviadas = perguntas.map((p) => ({
+      pergunta_id: p.id,
+      resposta: respostas[p.id],
+    }));
 
-    if (!user) {
-      setErro('Sua sessão expirou. Faça login novamente.');
-      setEnviando(false);
-      return;
-    }
-
-    const acertos = perguntas.filter((p) => respostas[p.id] === p.resposta_correta).length;
-    const pontosGanhos = calcularPontos(acertos, perguntas.length);
-
-    const { error: erroResposta } = await supabase.from('respostas_usuario').insert({
-      usuario_id: user.id,
-      questionario_id: questionarioId,
-      acertos,
-      total_perguntas: perguntas.length,
-      pontos_ganhos: pontosGanhos,
-    });
-
-    if (erroResposta) {
-      setErro('Não foi possível enviar suas respostas. Tente novamente.');
-      setEnviando(false);
-      return;
-    }
-
-    // Atualiza o total de pontos do perfil (soma incremental)
-    const { data: perfilAtual } = await supabase
-      .from('perfis')
-      .select('pontos')
-      .eq('id', user.id)
+    const { data, error } = await supabase
+      .rpc('responder_questionario', {
+        p_questionario_id: questionarioId,
+        p_respostas: respostasEnviadas,
+      })
       .single();
 
-    await supabase
-      .from('perfis')
-      .update({ pontos: (perfilAtual?.pontos ?? 0) + pontosGanhos })
-      .eq('id', user.id);
-
-    setResultado({ acertos, total: perguntas.length, pontosGanhos });
     setEnviando(false);
+
+    if (error || !data) {
+      setErro(error?.message ?? 'Não foi possível enviar suas respostas. Tente novamente.');
+      return;
+    }
+
+    setResultado({
+      acertos: data.acertos,
+      total: data.total_perguntas,
+      pontosGanhos: data.pontos_ganhos,
+    });
     router.refresh();
   }
 
