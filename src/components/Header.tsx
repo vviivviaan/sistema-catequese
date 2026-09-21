@@ -38,7 +38,9 @@ export default function Header() {
     return () => listener.subscription.unsubscribe();
   }, [supabase]);
 
-  if (pathname === '/login' || pathname === '/cadastro') return null;
+  if (['/login', '/cadastro', '/recuperar-senha', '/redefinir-senha'].includes(pathname)) {
+    return null;
+  }
 
   async function sair() {
     await supabase.auth.signOut();

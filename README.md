@@ -29,6 +29,10 @@ Permite que os catequizandos: acompanhem o conteúdo dos encontros semanais (fil
 6. Vá em **Project Settings → API** e copie:
    - **Project URL**
    - **anon public key**
+7. Vá em **Authentication → URL Configuration** e adicione em **Redirect URLs**:
+   - `http://localhost:3000/redefinir-senha` (para testar localmente)
+   - `https://SEU-DOMINIO-NO-VERCEL/redefinir-senha` (depois de publicar, passo 5)
+   - Sem isso, o link de "esqueci minha senha" enviado por e-mail não funciona (o Supabase só redireciona para URLs cadastradas aqui).
 
 ---
 

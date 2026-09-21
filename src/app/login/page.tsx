@@ -57,9 +57,14 @@ export default function PaginaLogin() {
           />
         </div>
         <div>
-          <label htmlFor="senha" className="mb-1 block text-sm font-medium text-noite">
-            Senha
-          </label>
+          <div className="mb-1 flex items-center justify-between">
+            <label htmlFor="senha" className="block text-sm font-medium text-noite">
+              Senha
+            </label>
+            <Link href="/recuperar-senha" className="text-xs font-medium text-mar hover:underline">
+              Esqueci minha senha
+            </Link>
+          </div>
           <input
             id="senha"
             type="password"
